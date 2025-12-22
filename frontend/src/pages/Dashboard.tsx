@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { planService } from '../services/api';
 import { DailyPlan } from '../types';
+import Chat from '../components/Chat';
 
 const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [plan, setPlan] = useState<DailyPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const generatePlan = async () => {
     setLoading(true);
@@ -21,6 +23,11 @@ const Dashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePlanUpdateNeeded = () => {
+    // Regenerate plan when AI suggests an update
+    generatePlan();
   };
 
   useEffect(() => {
@@ -64,6 +71,13 @@ const Dashboard: React.FC = () => {
               disabled={loading}
             >
               {loading ? 'Generating...' : 'New Plan'}
+            </button>
+            <button 
+              onClick={() => setIsChatOpen(true)} 
+              className="btn" 
+              style={{ background: '#10b981', color: 'white', marginRight: '1rem' }}
+            >
+              💬 Chat with Coach
             </button>
             <button onClick={logout} className="btn" style={{ background: '#f3f4f6' }}>
               Logout
@@ -163,6 +177,44 @@ const Dashboard: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* Floating Chat Button */}
+      {plan && !isChatOpen && (
+        <button 
+          onClick={() => setIsChatOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            border: 'none',
+            color: 'white',
+            fontSize: '24px',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            zIndex: 999,
+            transition: 'all 0.3s ease'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.transform = 'scale(1.1)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          💬
+        </button>
+      )}
+      
+      {/* Chat Component */}
+      <Chat 
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        onPlanUpdateNeeded={handlePlanUpdateNeeded}
+      />
     </div>
   );
 };

@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const geminiService = require('../services/geminiService');
+const User = require('../models/User');
 
 const router = express.Router();
 
@@ -12,6 +13,14 @@ router.post('/generate', auth, async (req, res) => {
     }
 
     const plan = await geminiService.generateDailyPlan(req.user.profile);
+    
+    // Save plan to user
+    await User.findByIdAndUpdate(req.user._id, {
+      currentPlan: {
+        ...plan,
+        createdAt: new Date()
+      }
+    });
     
     res.json({
       plan,

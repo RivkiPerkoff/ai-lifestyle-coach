@@ -50,6 +50,32 @@ const userSchema = new mongoose.Schema({
     refreshToken: String,
     calendarId: String
   },
+  currentPlan: {
+    dailyEvents: [{
+      time: String,
+      title: String,
+      description: String,
+      category: String,
+      duration: Number
+    }],
+    recommendations: {
+      nutrition: String,
+      sleep: String,
+      movement: String
+    },
+    createdAt: { type: Date, default: Date.now }
+  },
+  chatHistory: [{
+    userMessage: String,
+    aiResponse: String,
+    timestamp: { type: Date, default: Date.now },
+    needsPlanUpdate: { type: Boolean, default: false }
+  }],
+  chatState: {
+    isWaitingForResponse: { type: Boolean, default: false },
+    context: String, // 'meal_time_change', 'exercise_preference', etc.
+    data: Object // Store temporary data for the conversation
+  },
   isOnboarded: { type: Boolean, default: false }
 }, {
   timestamps: true
