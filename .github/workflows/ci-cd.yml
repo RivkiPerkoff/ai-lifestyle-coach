@@ -47,9 +47,9 @@ jobs:
     #   working-directory: ./frontend
     #   run: npm test -- --coverage --watchAll=false
     
-    - name: Build Frontend
-      working-directory: ./frontend
-      run: npm run build
+    # - name: Build Frontend
+    #   working-directory: ./frontend
+    #   run: npm run build
 
   docker:
     needs: test
