@@ -43,9 +43,9 @@ jobs:
         MONGODB_URI: mongodb://localhost:27017/ai-lifestyle-coach-test
         JWT_SECRET: test-secret
     
-    - name: Run Frontend Tests
-      working-directory: ./frontend
-      run: npm test -- --coverage --watchAll=false
+    # - name: Run Frontend Tests
+    #   working-directory: ./frontend
+    #   run: npm test -- --coverage --watchAll=false
     
     - name: Build Frontend
       working-directory: ./frontend

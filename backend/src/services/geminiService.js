@@ -3,20 +3,18 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 class GeminiService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'models/gemini-2.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ 
+      model: 'gemini-pro',
+      generationConfig: { maxOutputTokens: 2048 } 
+    });
   }
 
-  async generateDailyPlan(userProfile) {
-    const prompt = this.buildPrompt(userProfile);
+  async generateDailyPlan(userProfile, currentPlan = null) {
+    const prompt = this.buildPrompt(userProfile, currentPlan);
     
     try {
       console.log('Generating plan for user profile:', userProfile);
       console.log('API Key exists:', !!process.env.GEMINI_API_KEY);
-      console.log('API Key first 10 chars:', process.env.GEMINI_API_KEY?.substring(0, 10));
-      
-      // Test with a simple prompt first
-      const testResult = await this.model.generateContent('Hello, respond with just "OK"');
-      console.log('Simple test successful');
       
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
@@ -38,16 +36,36 @@ class GeminiService {
     }
   }
 
-  buildPrompt(profile) {
-    const { age, bmi, activityLevel, workSchedule, sleepSchedule, goals, preferences } = profile;
+  buildPrompt(profile, currentPlan) {
+    const { age, bmi, activityLevel, workSchedule, sleepSchedule, goals, preferences, planModifications } = profile;
     
-    return `
+    let prompt = `
 Create a personalized daily wellness plan in JSON format for:
 - Age: ${age}, BMI: ${bmi}, Activity: ${activityLevel}
 - Work: ${workSchedule.startTime}-${workSchedule.endTime}
 - Sleep: ${sleepSchedule.bedtime}-${sleepSchedule.wakeTime}
 - Goals: ${goals.join(', ')}
 - Enabled features: ${Object.entries(preferences).filter(([k,v]) => v).map(([k]) => k).join(', ')}
+`;
+
+    if (currentPlan && planModifications) {
+      prompt += `
+
+CURRENT PLAN:
+${JSON.stringify(currentPlan.dailyEvents || [], null, 2)}
+
+USER REQUESTED MODIFICATIONS: "${planModifications}"
+
+INSTRUCTIONS:
+1. Use the CURRENT PLAN as the baseline.
+2. Apply the USER REQUESTED MODIFICATIONS (e.g., increase duration, change time).
+3. Keep the rest of the schedule as similar as possible to the CURRENT PLAN.
+4. Return the FULL updated plan in JSON format.`;
+    } else if (planModifications) {
+      prompt += `\nIMPORTANT - USER REQUESTED CHANGES: ${planModifications}\nPlease incorporate these specific changes into the schedule while maintaining balance.`;
+    }
+
+    prompt += `
 
 Return ONLY valid JSON with this structure:
 {
@@ -74,6 +92,7 @@ Guidelines:
 - Times in 24-hour format
 - Keep descriptions under 50 characters
 `;
+    return prompt;
   }
 
   parseResponse(text) {
@@ -92,134 +111,79 @@ Guidelines:
   generateFallbackPlan(profile) {
     const { workSchedule, sleepSchedule, preferences, activityLevel } = profile;
     const events = [];
-    const timeVariations = [0, 15, 30]; // Add time variations
-    const randomVariation = timeVariations[Math.floor(Math.random() * timeVariations.length)];
     
-    // Morning routine with variation
+    // 1. Morning Routine
     if (preferences.hydration) {
-      const baseHour = 8;
-      const time = `${String(baseHour).padStart(2, '0')}:${String(randomVariation).padStart(2, '0')}`;
       events.push({
-        time,
+        time: sleepSchedule.wakeTime,
         title: "Morning Hydration",
-        description: "Start with a glass of water",
+        description: "Start your day with a large glass of water",
         category: "hydration",
-        duration: 2
-      });
-    }
-    
-    // Work break based on activity level with variation
-    if (preferences.movement) {
-      const baseHour = activityLevel === 'low' ? 10 : 11;
-      const time = `${String(baseHour).padStart(2, '0')}:${String(randomVariation).padStart(2, '0')}`;
-      const activities = [
-        { desc: "Quick stretch", dur: 5 },
-        { desc: "Walk around", dur: 7 },
-        { desc: "Desk exercises", dur: 6 }
-      ];
-      const activity = activities[Math.floor(Math.random() * activities.length)];
-      
-      events.push({
-        time,
-        title: "Movement Break",
-        description: activityLevel === 'high' ? "Quick workout" : activity.desc,
-        category: "movement",
-        duration: activityLevel === 'high' ? 10 : activity.dur
-      });
-    }
-    
-    // Lunch mindfulness with variation
-    if (preferences.nutrition) {
-      const baseHour = 13;
-      const minutes = [0, 15, 30, 45][Math.floor(Math.random() * 4)];
-      const time = `${String(baseHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-      const activities = [
-        "Eat slowly and focus on your meal",
-        "Practice mindful eating",
-        "Enjoy your lunch without distractions"
-      ];
-      
-      events.push({
-        time,
-        title: "Mindful Eating",
-        description: activities[Math.floor(Math.random() * activities.length)],
-        category: "nutrition",
-        duration: 10
-      });
-    }
-    
-    // Afternoon hydration with variation
-    if (preferences.hydration) {
-      const baseHour = 15;
-      const minutes = [0, 15, 30][Math.floor(Math.random() * 3)];
-      const time = `${String(baseHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-      
-      events.push({
-        time,
-        title: "Hydration Check",
-        description: "Drink water and breathe deeply",
-        category: "hydration",
-        duration: 3
-      });
-    }
-    
-    // Evening routine based on sleep schedule with variation
-    if (preferences.relaxation) {
-      const windDownHour = sleepSchedule.bedtime ? 
-        parseInt(sleepSchedule.bedtime.split(':')[0]) - 1 : 21;
-      const minutes = [0, 15, 30][Math.floor(Math.random() * 3)];
-      const time = `${String(windDownHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-      
-      const activities = [
-        "Wind down for better sleep",
-        "Prepare for restful night",
-        "Relax and unwind"
-      ];
-      
-      events.push({
-        time,
-        title: "Evening Relaxation",
-        description: activities[Math.floor(Math.random() * activities.length)],
-        category: "relaxation",
-        duration: 15
-      });
-    }
-    
-    // Add random wellness tip
-    if (preferences.digitalWellness && Math.random() > 0.5) {
-      events.push({
-        time: "16:00",
-        title: "Digital Break",
-        description: "Take a break from screens",
-        category: "digitalWellness",
         duration: 5
       });
     }
     
-    const nutritionTips = [
-      `Focus on ${activityLevel === 'high' ? 'protein-rich' : 'balanced'} meals`,
-      "Stay hydrated throughout the day",
-      "Include more vegetables in your meals"
-    ];
-    
-    const sleepTips = [
-      `Maintain ${sleepSchedule.bedtime || '23:00'}-${sleepSchedule.wakeTime || '07:00'} schedule`,
-      "Create a calming bedtime routine",
-      "Avoid screens before sleep"
-    ];
-    
-    const movementTips = [
-      `${activityLevel === 'high' ? 'Maintain' : 'Increase'} daily activity`,
-      "Take regular movement breaks",
-      "Try different types of exercise"
-    ];
+    // 2. Breakfast
+    if (preferences.nutrition) {
+      events.push({
+        time: "08:30",
+        title: "Energizing Breakfast",
+        description: "High protein breakfast to start the day",
+        category: "nutrition",
+        duration: 20
+      });
+    }
+
+    // 3. Lunch
+    if (preferences.nutrition) {
+      events.push({
+        time: "13:00",
+        title: "Lunch Break",
+        description: "Balanced meal with vegetables and protein",
+        category: "nutrition",
+        duration: 30
+      });
+    }
+
+    // 4. Afternoon Movement
+    if (preferences.movement) {
+      events.push({
+        time: workSchedule.endTime || "17:00",
+        title: "Daily Exercise",
+        description: activityLevel === 'high' ? "HIIT or Cardio session" : "Brisk walk or light yoga",
+        category: "movement",
+        duration: 30
+      });
+    }
+
+    // 5. Dinner
+    if (preferences.nutrition) {
+      events.push({
+        time: "19:30",
+        title: "Dinner",
+        description: "Light dinner, try to avoid heavy carbs",
+        category: "nutrition",
+        duration: 30
+      });
+    }
+
+    // 6. Sleep
+    if (preferences.sleep) {
+      events.push({
+        time: sleepSchedule.bedtime,
+        title: "Sleep Time",
+        description: "Lights out, phone away",
+        category: "sleep",
+        duration: 0
+      });
+    }
     
     return {
-      dailyEvents: events,
+      dailyEvents: events.sort((a, b) => a.time.localeCompare(b.time)),
       recommendations: {
-        nutrition: nutritionTips[Math.floor(Math.random() * nutritionTips.length)],
-        sleep: sleepTips[Math.floor(Math.random() * sleepTips.length)],
-        movement: movementTips[Math.floor(Math.random() * movementTips.length)]
+        nutrition: "Focus on whole foods and stay hydrated throughout the day.",
+        sleep: `Try to maintain a consistent sleep schedule between ${sleepSchedule.bedtime} and ${sleepSchedule.wakeTime}.`,
+        movement: "Aim for at least 30 minutes of moderate activity daily."
       }
     };
   }

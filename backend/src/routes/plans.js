@@ -12,15 +12,14 @@ router.post('/generate', auth, async (req, res) => {
       return res.status(400).json({ error: 'Please complete onboarding first' });
     }
 
-    const plan = await geminiService.generateDailyPlan(req.user.profile);
+    const plan = await geminiService.generateDailyPlan(req.user.profile, req.user.currentPlan);
     
-    // Save plan to user
-    await User.findByIdAndUpdate(req.user._id, {
-      currentPlan: {
-        ...plan,
-        createdAt: new Date()
-      }
-    });
+    // Clear modifications after generating
+    if (req.user.profile.planModifications) {
+      await User.findByIdAndUpdate(req.user._id, {
+        'profile.planModifications': null
+      });
+    }
     
     res.json({
       plan,

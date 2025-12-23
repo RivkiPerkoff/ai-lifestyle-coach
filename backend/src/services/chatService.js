@@ -3,7 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 class ChatService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'models/gemini-2.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
   }
 
   async handleUserMessage(message, userProfile, currentPlan, chatState) {
@@ -16,20 +16,30 @@ class ChatService {
       console.log('Sending to Gemini API...');
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
-      const text = response.text();
+      let text = response.text();
+      
+      // Check if Gemini indicates a plan update is needed via the tag
+      const updateMatch = text.match(/\[UPDATE_PLAN: (.*?)\]/);
+      const needsPlanUpdate = !!updateMatch;
+      
+      if (needsPlanUpdate) {
+        // Extract the modification instructions and attach to profile for the plan generator
+        userProfile.planModifications = updateMatch[1];
+        text = text.replace(updateMatch[0], '').trim();
+      }
       
       console.log('Gemini response received:', text.substring(0, 100));
       
       return {
         message: text,
         timestamp: new Date().toISOString(),
-        needsPlanUpdate: this.checkIfPlanUpdateNeeded(message)
+        needsPlanUpdate
       };
     } catch (error) {
       console.error('Chat API error details:', error);
       
       // Enhanced fallback based on message content
-      const fallbackResponse = this.getFallbackResponse(message, userProfile);
+      const fallbackResponse = this.getFallbackResponse(message, userProfile, error);
       
       return fallbackResponse;
     }
@@ -37,46 +47,46 @@ class ChatService {
 
   buildChatPrompt(userMessage, profile, currentPlan) {
     return `
-אתה מאמן אורח חיים אישי ומומחה לבריאות. המשתמש שואל אותך שאלה או מספר על שינוי.
+You are a personal lifestyle coach and health expert. The user is asking you a question or reporting a change.
 
-פרופיל המשתמש:
- גיל: ${profile.age}, BMI: ${profile.bmi}, משקל: ${profile.weight || 'לא צוין'}
-- רמת פעילות: ${profile.activityLevel}
-- שעות עבודה: ${profile.workSchedule.startTime}-${profile.workSchedule.endTime}
-- שעות שינה: ${profile.sleepSchedule.bedtime}-${profile.sleepSchedule.wakeTime}
-- מטרות: ${profile.goals.join(', ')}
+User Profile:
+- Age: ${profile.age}, BMI: ${profile.bmi}, Weight: ${profile.weight || 'Not specified'}
+- Activity Level: ${profile.activityLevel}
+- Work Hours: ${profile.workSchedule.startTime}-${profile.workSchedule.endTime}
+- Sleep Schedule: ${profile.sleepSchedule.bedtime}-${profile.sleepSchedule.wakeTime}
+- Goals: ${profile.goals.join(', ')}
 
-התוכנית הנוכחית שלו:
+Current Plan:
 ${JSON.stringify(currentPlan, null, 2)}
 
-הודעת המשתמש: "${userMessage}"
+User Message: "${userMessage}"
 
-הנחיות:
-- ענה בעברית בצורה חמה ואישית
-- תן עצות מעשיות וספציפיות
-- אם המשתמש מספר על שינוי בסדר יום/הרגלים, הצע התאמות
-- שמור על טון מעודד ותומך
-- תשובות קצרות (עד 150 מילים)
-- אל תציע שינויים דרסטיים
+Instructions:
+- Answer in Hebrew in a warm and personal manner.
+- Provide practical and specific advice.
+- If the user reports a change in schedule/habits, suggest adjustments.
+- Maintain an encouraging and supportive tone.
+- Keep answers short (up to 150 words).
+- Do not suggest drastic changes.
+- IMPORTANT: If the user asks to change the plan (e.g., "more sport", "change time", "new plan"), you MUST append "[UPDATE_PLAN: <specific instructions>]" at the end. Example: "[UPDATE_PLAN: Increase exercise duration to 45 mins in afternoon]"
+- When triggering a plan update (using the tag), phrase your response as a confirmation that you have made the change (e.g., "Great, I've updated your plan with more sport! Are you happy with the change?").
 
-ענה רק עם התשובה, ללא הסברים נוספים.
+Answer only with the response (and the tag if needed), without additional explanations.
 `;
   }
 
-  checkIfPlanUpdateNeeded(message) {
-    const updateKeywords = [
-      'שינוי', 'שינה', 'עבודה', 'לוח זמנים', 'שעות', 'התחלתי', 'הפסקתי',
-      'לא יכול', 'בעיה', 'קשה', 'עדכון', 'שנה', 'התאם'
-    ];
-    
-    return updateKeywords.some(keyword => 
-      message.toLowerCase().includes(keyword)
-    );
-  }
-
-  getFallbackResponse(message, userProfile) {
+  getFallbackResponse(message, userProfile, error = null) {
     const msg = message.toLowerCase();
     
+    // Check for NetFree block or specific network errors
+    if (error && (error.message.includes('418') || error.message.includes('NetFree'))) {
+      return {
+        message: 'נתקלתי בבעיית תקשורת (חסימת NetFree). נראה שספק האינטרנט חוסם את הגישה למודל. נסה לבדוק את החיבור או את הגדרות הסינון.',
+        timestamp: new Date().toISOString(),
+        needsPlanUpdate: false
+      };
+    }
+
     // General encouraging responses
     if (msg.includes('תודה') || msg.includes('תודה רבה')) {
       return {

@@ -43,7 +43,8 @@ const userSchema = new mongoose.Schema({
       relaxation: { type: Boolean, default: true },
       digitalWellness: { type: Boolean, default: true },
       outdoorTime: { type: Boolean, default: true }
-    }
+    },
+    planModifications: { type: String }
   },
   googleCalendar: {
     accessToken: String,
