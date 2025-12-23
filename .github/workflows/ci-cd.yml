@@ -70,7 +70,7 @@ jobs:
         echo "GOOGLE_CLIENT_ID=test" >> .env
         echo "GOOGLE_CLIENT_SECRET=test" >> .env
         echo "JWT_SECRET=test" >> .env
-        docker-compose up -d
+        docker compose up -d
         sleep 30
         curl -f http://localhost:5000/health || exit 1
-        docker-compose down
+        docker compose down
